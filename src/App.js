@@ -1,23 +1,48 @@
-import React from 'react';
-import logo from './logo.svg';
-import './App.css';
+import React, { useEffect, useRef } from 'react';
+import './App.scss';
+import { select } from 'd3';
+import { geoPath } from 'd3-geo';
+import { geoNaturalEarth } from 'd3-geo-projection';
+import L from 'leaflet';
+
+const geoJsonUrl = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
 
 function App() {
+  const ref = useRef()
+
+  useEffect(() => {
+    fetch(geoJsonUrl).then(response => {
+      response.json().then(geoData => {
+        const map = L.map('gpem-map').setView([0, 0], 4);
+        L.geoJSON(geoData.features).addTo(map);
+        const svg = select(map.getPanes().overlayPane).append('svg');
+        const g = svg.append('g').attr('class', 'leaflet-zoom-hide');
+        const projection = geoNaturalEarth();
+        const path = geoPath().projection(projection);
+        g.selectAll("path")
+          .data(geoData.features).enter()
+          .append("path").attr("fill", "#69b3a2")
+          .attr("d", path)
+          .style("stroke", "#fff")
+        
+        const bounds = path.bounds(geoData);
+        console.log(bounds);
+        const topLeft = bounds[0];
+        const bottomRight = bounds[1];
+        svg.attr("width", bottomRight[0] - topLeft[0])
+          .attr("height", bottomRight[1] - topLeft[1])
+          .style("left", topLeft[0] + "px")
+          .style("top", topLeft[1] + "px");
+        g.attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
+      });
+    })
+  }, [])
+
   return (
     <div className="App">
       <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
+        <div id="gpem-map"></div>
+        <svg ref={ref} width="1600" height="900"></svg>
       </header>
     </div>
   );
