@@ -23,7 +23,18 @@ function App() {
           .data(geoData.features).enter()
           .append("path").attr("fill", "#69b3a2")
           .attr("d", path)
+          .style("pointer-events","visible")
           .style("stroke", "#fff")
+          .on('mouseover', function (d, i) {
+            select(this).transition()
+              .duration("500")
+              .attr("fill", "#89d3c2")
+          })
+          .on('mouseout', function (d, i) {
+            select(this).transition()
+              .duration("500")
+              .attr("fill", "#69b3a2")
+          })
         
         const bounds = path.bounds(geoData);
         console.log(bounds);
