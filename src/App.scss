@@ -2,3 +2,12 @@
   width: 1600px;
   height: 900px;
 }
+
+.leaflet-interactive {
+  fill-opacity: 0.8;
+  transition: fill-opacity 0.5s;
+  
+  &:hover {
+    fill-opacity: 1;
+  }
+}

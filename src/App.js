@@ -59,14 +59,47 @@ function App() {
               
               return feature;
             })
-            L.geoJSON(features, { 
+            let geojson;
+            function onEachFeature(feature, layer) {
+              layer.on({
+                  mouseover: highlightFeature,
+                  mouseout: resetHighlight,
+                  click: zoomToFeature
+              });
+            }
+            
+            function highlightFeature(e) {
+              const layer = e.target;
+            
+              // Change style on mouse over
+              /*
+              layer.setStyle({
+                fillOpacity: 1,
+              });
+              */
+            
+              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                layer.bringToFront();
+              }
+            }
+            
+            function resetHighlight(e) {
+              geojson.resetStyle(e.target);
+            }
+            
+            function zoomToFeature(e) {
+              map.fitBounds(e.target.getBounds());
+            }
+
+            geojson = L.geoJSON(features, {
+              onEachFeature,
               attribution: "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
               style: function(feature) {
                 return {
                   color: color(feature.GDP),
-                  fillOpacity: 0.8,
+                  fillOpacity: 0.8
                 }
-              }
+              },
             }).addTo(map);
           })
       });
