@@ -9,6 +9,8 @@
     "d3": "^5.14.2",
     "d3-geo": "^1.11.9",
     "d3-geo-projection": "^2.7.1",
+    "d3-scale": "^3.2.1",
+    "d3-scale-chromatic": "^1.5.0",
     "leaflet": "^1.6.0",
     "node-sass": "^4.13.0",
     "react": "^16.12.0",

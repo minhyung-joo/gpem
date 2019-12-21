@@ -1,10 +1,19 @@
 import React, { useEffect, useRef } from 'react';
 import './App.scss';
-import { select } from 'd3';
-import { geoPath } from 'd3-geo';
-import { geoNaturalEarth } from 'd3-geo-projection';
-import L from 'leaflet';
+import { csv } from 'd3';
+import { scaleQuantize } from 'd3-scale';
+import { schemeBlues } from 'd3-scale-chromatic';
 
+import L from 'leaflet';
+import gdpCSV from './gdp_data.csv';
+
+Array.prototype.max = function() {
+  return Math.max.apply(null, this);
+};
+
+Array.prototype.min = function() {
+  return Math.min.apply(null, this);
+};
 const geoJsonUrl = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
 
 function App() {
@@ -13,38 +22,53 @@ function App() {
   useEffect(() => {
     fetch(geoJsonUrl).then(response => {
       response.json().then(geoData => {
-        const map = L.map('gpem-map').setView([0, 0], 4);
-        L.geoJSON(geoData.features).addTo(map);
-        const svg = select(map.getPanes().overlayPane).append('svg');
-        const g = svg.append('g').attr('class', 'leaflet-zoom-hide');
-        const projection = geoNaturalEarth();
-        const path = geoPath().projection(projection);
-        g.selectAll("path")
-          .data(geoData.features).enter()
-          .append("path").attr("fill", "#69b3a2")
-          .attr("d", path)
-          .style("pointer-events","visible")
-          .style("stroke", "#fff")
-          .on('mouseover', function (d, i) {
-            select(this).transition()
-              .duration("500")
-              .attr("fill", "#89d3c2")
+        csv(gdpCSV)
+          .then(rawData => rawData.filter(row => row["2018"].length))
+          .then(filteredData => filteredData.reduce(
+            (prev, row) => {
+              prev[row["Country Code"]] = {
+                
+                gdp: row["2018"],
+                gdpLevel: Math.round(Math.log10(parseFloat(row["2018"])))
+              }; 
+              return prev;
+            }
+          , {}))
+          .then(gdpData => {
+            const gdps = [];
+            Object.keys(gdpData).forEach(key => gdps.push(gdpData[key].gdpLevel));
+            const minGdpScale = gdps.min();
+            const maxGdpScale = gdps.max();
+            const color = scaleQuantize([minGdpScale, maxGdpScale], schemeBlues[maxGdpScale - minGdpScale])
+            const map = L.map('gpem-map', {
+              minZoom: 2,
+              maxZoom: 10,
+              maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
+            }).setView([0, 0], 4);
+            const features = geoData.features.map(feature => {
+              let countryCode = feature.properties.WB_A3;
+              if (countryCode === '-99') {
+                countryCode = feature.properties.ADM0_A3;
+              }
+
+              if (gdpData[countryCode]) {
+                feature.GDP = gdpData[countryCode].gdpLevel
+              } else {
+                feature.GDP = minGdpScale;
+              }
+              
+              return feature;
+            })
+            L.geoJSON(features, { 
+              attribution: "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
+              style: function(feature) {
+                return {
+                  color: color(feature.GDP),
+                  fillOpacity: 0.8,
+                }
+              }
+            }).addTo(map);
           })
-          .on('mouseout', function (d, i) {
-            select(this).transition()
-              .duration("500")
-              .attr("fill", "#69b3a2")
-          })
-        
-        const bounds = path.bounds(geoData);
-        console.log(bounds);
-        const topLeft = bounds[0];
-        const bottomRight = bounds[1];
-        svg.attr("width", bottomRight[0] - topLeft[0])
-          .attr("height", bottomRight[1] - topLeft[1])
-          .style("left", topLeft[0] + "px")
-          .style("top", topLeft[1] + "px");
-        g.attr("transform", "translate(" + -topLeft[0] + "," + -topLeft[1] + ")");
       });
     })
   }, [])
