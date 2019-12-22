@@ -1,6 +1,27 @@
+.App {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.search-bar {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  width: 200px;
+  height: 30px;
+  z-index: 999;
+
+  input {
+    font-size: 15px;
+    width: 100%;
+    height: 30px;
+  }
+}
+
 #gpem-map {
-  width: 1600px;
-  height: 900px;
+  width: 100vw;
+  height: 100vh;
 }
 
 .leaflet-interactive {

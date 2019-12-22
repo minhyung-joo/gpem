@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import './App.scss';
 import { csv } from 'd3';
 import { scaleQuantize } from 'd3-scale';
@@ -15,9 +15,10 @@ Array.prototype.min = function() {
   return Math.min.apply(null, this);
 };
 const geoJsonUrl = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
-
+const countryList = [];
+let map = null;
 function App() {
-  const ref = useRef()
+  const [searchValue, setSearchValue] = useState("");
 
   useEffect(() => {
     fetch(geoJsonUrl).then(response => {
@@ -40,12 +41,16 @@ function App() {
             const minGdpScale = gdps.min();
             const maxGdpScale = gdps.max();
             const color = scaleQuantize([minGdpScale, maxGdpScale], schemeBlues[maxGdpScale - minGdpScale])
-            const map = L.map('gpem-map', {
+            map = L.map('gpem-map', {
               minZoom: 2,
               maxZoom: 10,
               maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
             }).setView([0, 0], 4);
             const features = geoData.features.map(feature => {
+              countryList.push({
+                name: feature.properties.NAME,
+                bounds: feature.bbox
+              })
               let countryCode = feature.properties.WB_A3;
               if (countryCode === '-99') {
                 countryCode = feature.properties.ADM0_A3;
@@ -61,6 +66,10 @@ function App() {
             })
             let geojson;
             function onEachFeature(feature, layer) {
+              layer.bindTooltip(feature.properties.NAME, {
+                direction: 'top',
+                sticky: true
+              });
               layer.on({
                   mouseover: highlightFeature,
                   mouseout: resetHighlight,
@@ -108,10 +117,25 @@ function App() {
 
   return (
     <div className="App">
-      <header className="App-header">
-        <div id="gpem-map"></div>
-        <svg ref={ref} width="1600" height="900"></svg>
-      </header>
+      <div className="search-bar">
+        <input
+          onChange={e => setSearchValue(e.target.value)}
+          onKeyDown={e => {
+            if (e.keyCode === 13) {
+              const country = countryList.filter(countryObj => countryObj.name === searchValue)[0];
+              if (country && map) {
+                const bounds = L.latLngBounds(
+                  L.latLng(country.bounds[1], country.bounds[0]),
+                  L.latLng(country.bounds[3], country.bounds[2])
+                );
+                map.fitBounds(bounds);
+              }
+            }
+          }}
+          value={searchValue}
+        />
+      </div>
+      <div id="gpem-map"></div>
     </div>
   );
 }
