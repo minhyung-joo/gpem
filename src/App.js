@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import "./App.scss";
 import { csv } from "d3";
 import { scaleQuantize } from "d3-scale";
@@ -20,17 +20,23 @@ const countryList = [];
 let map = null;
 function App() {
   const [searchValue, setSearchValue] = useState("");
+  const [country, setCountry] = useState(null);
+  const [focused, setFocused] = useState(false);
+  const ref = useRef();
   let previews = [];
-  if (searchValue.length) {
+  if (searchValue.length && ref.current === document.activeElement) {
     previews = previews
       .concat(
         countryList.filter(
           countryObj =>
-            countryObj.name.substring(0, searchValue.length) === searchValue &&
-            countryObj.name !== searchValue
+            countryObj.name.substring(0, searchValue.length) === searchValue
         )
       )
       .slice(0, 5);
+  }
+
+  if (!focused && ref.current) {
+    ref.current.blur();
   }
 
   useEffect(() => {
@@ -64,10 +70,6 @@ function App() {
               maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
             }).setView([0, 0], 4);
             const features = geoData.features.map(feature => {
-              countryList.push({
-                name: feature.properties.NAME,
-                bounds: feature.bbox
-              });
               let countryCode = feature.properties.WB_A3;
               if (countryCode === "-99") {
                 countryCode = feature.properties.ADM0_A3;
@@ -78,6 +80,12 @@ function App() {
               } else {
                 feature.GDP = minGdpScale;
               }
+
+              countryList.push({
+                name: feature.properties.NAME,
+                bounds: feature.bbox,
+                gdp: feature.GDP
+              });
 
               return feature;
             });
@@ -133,23 +141,32 @@ function App() {
     });
   }, []);
 
+  useEffect(() => {
+    if (country && map) {
+      const bounds = L.latLngBounds(
+        L.latLng(country.bounds[1], country.bounds[0]),
+        L.latLng(country.bounds[3], country.bounds[2])
+      );
+      map.fitBounds(bounds);
+    }
+  }, [country]);
+
   return (
     <div className="App">
       <div className="search-bar">
         <input
+          ref={ref}
           className="input"
+          onFocus={() => setFocused(true)}
           onChange={e => setSearchValue(e.target.value)}
           onKeyDown={e => {
             if (e.keyCode === 13) {
               const country = countryList.filter(
                 countryObj => countryObj.name === searchValue
               )[0];
-              if (country && map) {
-                const bounds = L.latLngBounds(
-                  L.latLng(country.bounds[1], country.bounds[0]),
-                  L.latLng(country.bounds[3], country.bounds[2])
-                );
-                map.fitBounds(bounds);
+              if (country) {
+                setFocused(false);
+                setCountry(Object.assign({}, country));
               }
             }
           }}
@@ -162,11 +179,7 @@ function App() {
               className="preview-item"
               onClick={() => {
                 setSearchValue(previewObj.name);
-                const bounds = L.latLngBounds(
-                  L.latLng(previewObj.bounds[1], previewObj.bounds[0]),
-                  L.latLng(previewObj.bounds[3], previewObj.bounds[2])
-                );
-                map.fitBounds(bounds);
+                setCountry(Object.assign({}, previewObj));
               }}
             >
               {previewObj.name}
@@ -174,7 +187,21 @@ function App() {
           ))}
         </div>
       </div>
-      <div id="gpem-map"></div>
+      <div
+        id="gpem-map"
+        onClick={() => {
+          setFocused(false);
+        }}
+      ></div>
+      {country ? (
+        <div className="country-info">
+          <div className="close-button" onClick={() => setCountry(null)}>
+            x
+          </div>
+          <div className="country-name">{country.name}</div>
+          <div className="country-gdp">{country.gdp}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
