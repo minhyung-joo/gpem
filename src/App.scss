@@ -72,6 +72,21 @@
   }
 
   .country-gdp {
+    span {
+      color: black;
+      font-weight: bold;
+    }
+
+    color: blue;
+    margin: 8px;
+  }
+
+  .country-population {
+    span {
+      color: black;
+      font-weight: bold;
+    }
+
     color: blue;
     margin: 8px;
   }

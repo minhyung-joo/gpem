@@ -2,10 +2,12 @@ import React, { useEffect, useState, useRef } from "react";
 import "./App.scss";
 import { csv } from "d3";
 import { scaleQuantize } from "d3-scale";
-import { schemeBlues } from "d3-scale-chromatic";
+import { schemeBlues, schemeReds } from "d3-scale-chromatic";
+import { IoIosClose } from "react-icons/io";
 
 import L from "leaflet";
 import gdpCSV from "./gdp_data.csv";
+import populationCSV from "./population_data.csv";
 
 Array.prototype.max = function() {
   return Math.max.apply(null, this);
@@ -46,23 +48,60 @@ function App() {
           .then(rawData => rawData.filter(row => row["2018"].length))
           .then(filteredData =>
             filteredData.reduce((prev, row) => {
+              const gdp = parseFloat(row["2018"]);
               prev[row["Country Code"]] = {
-                gdp: row["2018"],
-                gdpLevel: Math.round(Math.log10(parseFloat(row["2018"])))
+                gdp,
+                gdpLevel: Math.round(Math.log10(gdp))
               };
               return prev;
             }, {})
           )
           .then(gdpData => {
+            return new Promise((resolve, reject) => {
+              csv(populationCSV)
+                .then(rawData => rawData.filter(row => row["2018"].length))
+                .then(populationData => {
+                  populationData.forEach(row => {
+                    if (!gdpData.hasOwnProperty(row["Country Code"])) {
+                      gdpData[row["Country Code"]] = {};
+                    }
+
+                    const population = parseFloat(row["2018"]);
+
+                    gdpData[row["Country Code"]].population = population;
+                    gdpData[row["Country Code"]].populationLevel = Math.round(
+                      Math.log10(population)
+                    );
+                  });
+                  resolve(gdpData);
+                })
+                .catch(reject);
+            });
+          })
+          .then(gdpData => {
             const gdps = [];
-            Object.keys(gdpData).forEach(key =>
-              gdps.push(gdpData[key].gdpLevel)
-            );
+            const populations = [];
+            Object.keys(gdpData).forEach(key => {
+              if (gdpData[key].gdpLevel) {
+                gdps.push(gdpData[key].gdpLevel);
+              }
+
+              if (gdpData[key].populationLevel) {
+                populations.push(gdpData[key].populationLevel);
+              }
+            });
+            console.log(gdpData);
             const minGdpScale = gdps.min();
             const maxGdpScale = gdps.max();
+            const minPopScale = populations.min();
+            const maxPopScale = populations.max();
             const color = scaleQuantize(
               [minGdpScale, maxGdpScale],
               schemeBlues[maxGdpScale - minGdpScale]
+            );
+            const popColor = scaleQuantize(
+              [minPopScale, maxPopScale],
+              schemeReds[maxPopScale - minPopScale]
             );
             map = L.map("gpem-map", {
               minZoom: 2,
@@ -76,15 +115,34 @@ function App() {
               }
 
               if (gdpData[countryCode]) {
-                feature.GDP = gdpData[countryCode].gdpLevel;
+                if (gdpData[countryCode].gdpLevel) {
+                  feature.GDPLevel = gdpData[countryCode].gdpLevel;
+                  feature.GDP = gdpData[countryCode].gdp;
+                } else {
+                  feature.GDPLevel = minGdpScale;
+                  feature.GDP = 0;
+                }
+
+                if (gdpData[countryCode].populationLevel) {
+                  feature.populationLevel =
+                    gdpData[countryCode].populationLevel;
+                  feature.population = gdpData[countryCode].population;
+                } else {
+                  feature.populationLevel = minPopScale;
+                  feature.population = 0;
+                }
               } else {
-                feature.GDP = minGdpScale;
+                feature.GDPLevel = minGdpScale;
+                feature.GDP = 0;
+                feature.populationLevel = minPopScale;
+                feature.population = 0;
               }
 
               countryList.push({
                 name: feature.properties.NAME,
                 bounds: feature.bbox,
-                gdp: feature.GDP
+                gdp: feature.GDP,
+                population: feature.population
               });
 
               return feature;
@@ -98,7 +156,7 @@ function App() {
               layer.on({
                 mouseover: highlightFeature,
                 mouseout: resetHighlight,
-                click: zoomToFeature
+                click: handleClick
               });
             }
 
@@ -121,7 +179,14 @@ function App() {
               geojson.resetStyle(e.target);
             }
 
-            function zoomToFeature(e) {
+            function handleClick(e) {
+              console.log(e.target.feature);
+              const countryName = e.target.feature.properties.NAME;
+              const country = countryList.filter(
+                countryObj => countryObj.name === countryName
+              )[0];
+              setSearchValue(e.target.feature.properties.NAME);
+              setCountry(Object.assign({}, country));
               map.fitBounds(e.target.getBounds());
             }
 
@@ -131,7 +196,7 @@ function App() {
                 "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
               style: function(feature) {
                 return {
-                  color: color(feature.GDP),
+                  color: color(feature.GDPLevel),
                   fillOpacity: 0.8
                 };
               }
@@ -196,14 +261,39 @@ function App() {
       {country ? (
         <div className="country-info">
           <div className="close-button" onClick={() => setCountry(null)}>
-            x
+            <IoIosClose />
           </div>
           <div className="country-name">{country.name}</div>
-          <div className="country-gdp">{country.gdp}</div>
+          <div className="country-gdp">
+            <span>GDP: </span>
+            {format(country.gdp, "$")}
+          </div>
+          <div className="country-population">
+            <span>Population: </span>
+            {format(country.population)}
+          </div>
         </div>
       ) : null}
     </div>
   );
+}
+
+function format(value, prefix) {
+  const valueStr = value + "";
+  const chars = [];
+  for (let i = 0; i < valueStr.length; i++) {
+    if (i > 0 && i % 3 === 0) {
+      chars.push(",");
+    }
+
+    chars.push(valueStr.charAt(valueStr.length - 1 - i));
+  }
+
+  if (prefix) {
+    chars.push(prefix);
+  }
+
+  return chars.reverse().join("");
 }
 
 export default App;
