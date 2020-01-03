@@ -20,10 +20,13 @@ const geoJsonUrl =
   "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson";
 const countryList = [];
 let map = null;
+let gdpLayer;
+let popLayer;
 function App() {
   const [searchValue, setSearchValue] = useState("");
   const [country, setCountry] = useState(null);
   const [focused, setFocused] = useState(false);
+  const [currentLayer, setCurrentLayer] = useState("gdp");
   const ref = useRef();
   let previews = [];
   if (searchValue.length && ref.current === document.activeElement) {
@@ -42,168 +45,170 @@ function App() {
   }
 
   useEffect(() => {
-    fetch(geoJsonUrl).then(response => {
-      response.json().then(geoData => {
-        csv(gdpCSV)
-          .then(rawData => rawData.filter(row => row["2018"].length))
-          .then(filteredData =>
-            filteredData.reduce((prev, row) => {
-              const gdp = parseFloat(row["2018"]);
-              prev[row["Country Code"]] = {
-                gdp,
-                gdpLevel: Math.round(Math.log10(gdp))
-              };
-              return prev;
-            }, {})
-          )
-          .then(gdpData => {
-            return new Promise((resolve, reject) => {
-              csv(populationCSV)
-                .then(rawData => rawData.filter(row => row["2018"].length))
-                .then(populationData => {
-                  populationData.forEach(row => {
-                    if (!gdpData.hasOwnProperty(row["Country Code"])) {
-                      gdpData[row["Country Code"]] = {};
-                    }
+    (async function() {
+      const response = await fetch(geoJsonUrl);
+      const geoData = await response.json();
+      const rawGdpData = await csv(gdpCSV);
+      const rawPopData = await csv(populationCSV);
+      const countryData = rawGdpData
+        .filter(row => row["2018"].length)
+        .reduce((prev, row) => {
+          const gdp = parseFloat(row["2018"]);
+          prev[row["Country Code"]] = {
+            gdp,
+            gdpLevel: Math.round(Math.log10(gdp))
+          };
+          return prev;
+        }, {});
+      rawPopData
+        .filter(row => row["2018"].length)
+        .forEach(row => {
+          if (!countryData.hasOwnProperty(row["Country Code"])) {
+            countryData[row["Country Code"]] = {};
+          }
 
-                    const population = parseFloat(row["2018"]);
+          const population = parseFloat(row["2018"]);
 
-                    gdpData[row["Country Code"]].population = population;
-                    gdpData[row["Country Code"]].populationLevel = Math.round(
-                      Math.log10(population)
-                    );
-                  });
-                  resolve(gdpData);
-                })
-                .catch(reject);
-            });
-          })
-          .then(gdpData => {
-            const gdps = [];
-            const populations = [];
-            Object.keys(gdpData).forEach(key => {
-              if (gdpData[key].gdpLevel) {
-                gdps.push(gdpData[key].gdpLevel);
-              }
+          countryData[row["Country Code"]].population = population;
+          countryData[row["Country Code"]].populationLevel = Math.round(
+            Math.log10(population)
+          );
+        });
+      const gdps = [];
+      const populations = [];
+      Object.keys(countryData).forEach(key => {
+        if (countryData[key].gdpLevel) {
+          gdps.push(countryData[key].gdpLevel);
+        }
 
-              if (gdpData[key].populationLevel) {
-                populations.push(gdpData[key].populationLevel);
-              }
-            });
-            console.log(gdpData);
-            const minGdpScale = gdps.min();
-            const maxGdpScale = gdps.max();
-            const minPopScale = populations.min();
-            const maxPopScale = populations.max();
-            const color = scaleQuantize(
-              [minGdpScale, maxGdpScale],
-              schemeBlues[maxGdpScale - minGdpScale]
-            );
-            const popColor = scaleQuantize(
-              [minPopScale, maxPopScale],
-              schemeReds[maxPopScale - minPopScale]
-            );
-            map = L.map("gpem-map", {
-              minZoom: 2,
-              maxZoom: 10,
-              maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
-            }).setView([0, 0], 4);
-            const features = geoData.features.map(feature => {
-              let countryCode = feature.properties.WB_A3;
-              if (countryCode === "-99") {
-                countryCode = feature.properties.ADM0_A3;
-              }
+        if (countryData[key].populationLevel) {
+          populations.push(countryData[key].populationLevel);
+        }
+      });
+      const minGdpScale = gdps.min();
+      const maxGdpScale = gdps.max();
+      const minPopScale = populations.min();
+      const maxPopScale = populations.max();
+      const color = scaleQuantize(
+        [minGdpScale, maxGdpScale],
+        schemeBlues[maxGdpScale - minGdpScale]
+      );
+      const popColor = scaleQuantize(
+        [minPopScale, maxPopScale],
+        schemeReds[maxPopScale - minPopScale]
+      );
+      map = L.map("gpem-map", {
+        minZoom: 2,
+        maxZoom: 10,
+        maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
+      }).setView([0, 0], 4);
+      const features = geoData.features.map(feature => {
+        let countryCode = feature.properties.WB_A3;
+        if (countryCode === "-99") {
+          countryCode = feature.properties.ADM0_A3;
+        }
 
-              if (gdpData[countryCode]) {
-                if (gdpData[countryCode].gdpLevel) {
-                  feature.GDPLevel = gdpData[countryCode].gdpLevel;
-                  feature.GDP = gdpData[countryCode].gdp;
-                } else {
-                  feature.GDPLevel = minGdpScale;
-                  feature.GDP = 0;
-                }
+        if (countryData[countryCode]) {
+          if (countryData[countryCode].gdpLevel) {
+            feature.GDPLevel = countryData[countryCode].gdpLevel;
+            feature.GDP = countryData[countryCode].gdp;
+          } else {
+            feature.GDPLevel = minGdpScale;
+            feature.GDP = 0;
+          }
 
-                if (gdpData[countryCode].populationLevel) {
-                  feature.populationLevel =
-                    gdpData[countryCode].populationLevel;
-                  feature.population = gdpData[countryCode].population;
-                } else {
-                  feature.populationLevel = minPopScale;
-                  feature.population = 0;
-                }
-              } else {
-                feature.GDPLevel = minGdpScale;
-                feature.GDP = 0;
-                feature.populationLevel = minPopScale;
-                feature.population = 0;
-              }
+          if (countryData[countryCode].populationLevel) {
+            feature.populationLevel = countryData[countryCode].populationLevel;
+            feature.population = countryData[countryCode].population;
+          } else {
+            feature.populationLevel = minPopScale;
+            feature.population = 0;
+          }
+        } else {
+          feature.GDPLevel = minGdpScale;
+          feature.GDP = 0;
+          feature.populationLevel = minPopScale;
+          feature.population = 0;
+        }
 
-              countryList.push({
-                name: feature.properties.NAME,
-                bounds: feature.bbox,
-                gdp: feature.GDP,
-                population: feature.population
-              });
+        countryList.push({
+          name: feature.properties.NAME,
+          bounds: feature.bbox,
+          gdp: feature.GDP,
+          population: feature.population
+        });
 
-              return feature;
-            });
-            let geojson;
-            function onEachFeature(feature, layer) {
-              layer.bindTooltip(feature.properties.NAME, {
-                direction: "top",
-                sticky: true
-              });
-              layer.on({
-                mouseover: highlightFeature,
-                mouseout: resetHighlight,
-                click: handleClick
-              });
-            }
+        return feature;
+      });
 
-            function highlightFeature(e) {
-              const layer = e.target;
+      function onEachFeature(feature, layer) {
+        layer.bindTooltip(feature.properties.NAME, {
+          direction: "top",
+          sticky: true
+        });
+        layer.on({
+          click: handleClick
+        });
+      }
 
-              // Change style on mouse over
-              /*
+      function highlightFeature(e) {
+        const layer = e.target;
+
+        // Change style on mouse over
+        /*
               layer.setStyle({
                 fillOpacity: 1,
               });
               */
 
-              if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
-                layer.bringToFront();
-              }
-            }
+        if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+          layer.bringToFront();
+        }
+      }
 
-            function resetHighlight(e) {
-              geojson.resetStyle(e.target);
-            }
+      function resetHighlight(e) {
+        if (currentLayer === "gdp") {
+          gdpLayer.resetStyle(e.target);
+        } else {
+          popLayer.resetStyle(e.target);
+        }
+      }
 
-            function handleClick(e) {
-              console.log(e.target.feature);
-              const countryName = e.target.feature.properties.NAME;
-              const country = countryList.filter(
-                countryObj => countryObj.name === countryName
-              )[0];
-              setSearchValue(e.target.feature.properties.NAME);
-              setCountry(Object.assign({}, country));
-              map.fitBounds(e.target.getBounds());
-            }
+      function handleClick(e) {
+        console.log(e.target.feature);
+        const countryName = e.target.feature.properties.NAME;
+        const country = countryList.filter(
+          countryObj => countryObj.name === countryName
+        )[0];
+        setSearchValue(e.target.feature.properties.NAME);
+        setCountry(Object.assign({}, country));
+        map.fitBounds(e.target.getBounds());
+      }
 
-            geojson = L.geoJSON(features, {
-              onEachFeature,
-              attribution:
-                "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
-              style: function(feature) {
-                return {
-                  color: color(feature.GDPLevel),
-                  fillOpacity: 0.8
-                };
-              }
-            }).addTo(map);
-          });
+      gdpLayer = L.geoJSON(features, {
+        onEachFeature,
+        attribution:
+          "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
+        style: function(feature) {
+          return {
+            color: color(feature.GDPLevel),
+            fillOpacity: 0.8
+          };
+        }
+      }).addTo(map);
+
+      popLayer = L.geoJSON(features, {
+        onEachFeature,
+        attribution:
+          "Data source <a href='https://github.com/nvkelso/' target='_blank'>@nvkelso</a>",
+        style: function(feature) {
+          return {
+            color: popColor(feature.GDPLevel),
+            fillOpacity: 0.8
+          };
+        }
       });
-    });
+    })();
   }, []);
 
   useEffect(() => {
@@ -274,6 +279,22 @@ function App() {
           </div>
         </div>
       ) : null}
+      <div
+        className="map-toggle"
+        onClick={() => {
+          if (currentLayer === "gdp") {
+            map.addLayer(popLayer);
+            map.removeLayer(gdpLayer);
+            setCurrentLayer("pop");
+          } else {
+            map.addLayer(gdpLayer);
+            map.removeLayer(popLayer);
+            setCurrentLayer("gdp");
+          }
+        }}
+      >
+        Toggle
+      </div>
     </div>
   );
 }

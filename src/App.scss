@@ -4,6 +4,24 @@
   left: 0;
 }
 
+.map-toggle {
+  position: absolute;
+  bottom: 50px;
+  right: 20px;
+  width: 100px;
+  height: 25px;
+  background-color: white;
+  text-align: center;
+  vertical-align: middle;
+  line-height: 25px;
+  z-index: 999;
+
+  &:hover {
+    background-color: #eee;
+    cursor: pointer;
+  }
+}
+
 .search-bar {
   position: absolute;
   top: 20px;
