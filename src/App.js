@@ -54,8 +54,13 @@ function App() {
         .filter(row => row["2018"].length)
         .reduce((prev, row) => {
           const gdp = parseFloat(row["2018"]);
+          const gdpHist = [];
+          for (let i = 2000; i < 2019; i++) {
+            gdpHist.push(parseFloat(row[i + ""] || "0"));
+          }
           prev[row["Country Code"]] = {
             gdp,
+            gdpHist,
             gdpLevel: Math.round(Math.log10(gdp))
           };
           return prev;
@@ -68,11 +73,15 @@ function App() {
           }
 
           const population = parseFloat(row["2018"]);
-
+          const popHist = [];
+          for (let i = 2000; i < 2019; i++) {
+            popHist.push(parseFloat(row[i + ""] || "0"));
+          }
           countryData[row["Country Code"]].population = population;
           countryData[row["Country Code"]].populationLevel = Math.round(
             Math.log10(population)
           );
+          countryData[row["Country Code"]].popHist = popHist;
         });
       const gdps = [];
       const populations = [];
@@ -109,29 +118,28 @@ function App() {
         }
 
         if (countryData[countryCode]) {
-          if (countryData[countryCode].gdpLevel) {
-            feature.GDPLevel = countryData[countryCode].gdpLevel;
-            feature.GDP = countryData[countryCode].gdp;
-          } else {
-            feature.GDPLevel = minGdpScale;
-            feature.GDP = 0;
-          }
-
-          if (countryData[countryCode].populationLevel) {
-            feature.populationLevel = countryData[countryCode].populationLevel;
-            feature.population = countryData[countryCode].population;
-          } else {
-            feature.populationLevel = minPopScale;
-            feature.population = 0;
-          }
+          feature.GDPLevel = countryData[countryCode].gdpLevel || minGdpScale;
+          feature.GDP = countryData[countryCode].gdp || 0;
+          feature.GDPHist = countryData[countryCode].gdpHist || [];
+          feature.populationLevel =
+            countryData[countryCode].populationLevel || minPopScale;
+          feature.population = countryData[countryCode].population || 0;
+          feature.popHist = countryData[countryCode].popHist || [];
         } else {
           feature.GDPLevel = minGdpScale;
           feature.GDP = 0;
+          feature.GDPHist = [];
           feature.populationLevel = minPopScale;
           feature.population = 0;
+          feature.popHist = [];
         }
 
+        let flagCode = feature.properties.ISO_A2;
+        if (flagCode === "-99") {
+          flagCode = feature.properties.WB_A2;
+        }
         countryList.push({
+          flagCode,
           name: feature.properties.NAME,
           bounds: feature.bbox,
           gdp: feature.GDP,
@@ -269,6 +277,12 @@ function App() {
             <IoIosClose />
           </div>
           <div className="country-name">{country.name}</div>
+          <div className="country-flag">
+            <img
+              src={`https://www.countryflags.io/${country.flagCode}/flat/64.png`}
+              alt="flag"
+            />
+          </div>
           <div className="country-gdp">
             <span>GDP: </span>
             {format(country.gdp, "$")}
