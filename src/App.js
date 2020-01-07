@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import "./App.scss";
-import { csv } from "d3";
-import { scaleQuantize } from "d3-scale";
+import { csv, select, extent, max, axisBottom, axisLeft, line } from "d3";
+import { scaleQuantize, scaleTime, scaleLinear } from "d3-scale";
 import { schemeBlues, schemeReds } from "d3-scale-chromatic";
 import { IoIosClose } from "react-icons/io";
 
@@ -28,6 +28,7 @@ function App() {
   const [focused, setFocused] = useState(false);
   const [currentLayer, setCurrentLayer] = useState("gdp");
   const ref = useRef();
+  const graphRef = useRef();
   let previews = [];
   if (searchValue.length && ref.current === document.activeElement) {
     previews = previews
@@ -56,7 +57,7 @@ function App() {
           const gdp = parseFloat(row["2018"]);
           const gdpHist = [];
           for (let i = 2000; i < 2019; i++) {
-            gdpHist.push(parseFloat(row[i + ""] || "0"));
+            gdpHist.push({ year: i, value: parseFloat(row[i + ""] || "0") });
           }
           prev[row["Country Code"]] = {
             gdp,
@@ -75,7 +76,7 @@ function App() {
           const population = parseFloat(row["2018"]);
           const popHist = [];
           for (let i = 2000; i < 2019; i++) {
-            popHist.push(parseFloat(row[i + ""] || "0"));
+            popHist.push({ year: i, value: parseFloat(row[i + ""] || "0") });
           }
           countryData[row["Country Code"]].population = population;
           countryData[row["Country Code"]].populationLevel = Math.round(
@@ -143,7 +144,8 @@ function App() {
           name: feature.properties.NAME,
           bounds: feature.bbox,
           gdp: feature.GDP,
-          population: feature.population
+          population: feature.population,
+          GDPHist: feature.GDPHist
         });
 
         return feature;
@@ -221,6 +223,63 @@ function App() {
 
   useEffect(() => {
     if (country && map) {
+      const marginRight = 20;
+      const marginLeft = 50;
+      const marginTop = 10;
+      const marginBottom = 30;
+      const width = 250;
+      const height = 250;
+      select(graphRef.current)
+        .selectAll("*")
+        .remove();
+      const svg = select(graphRef.current)
+        .append("svg")
+        .attr("width", width + marginRight + marginLeft + "")
+        .attr("height", height + marginTop + marginBottom + "")
+        .append("g")
+        .attr("transform", `translate(${marginLeft}, ${marginTop})`);
+
+      const x = scaleTime()
+        .domain(
+          extent(country.GDPHist, function(d) {
+            return new Date().setFullYear(d.year);
+          })
+        )
+        .range([0, width]);
+      svg
+        .append("g")
+        .attr("transform", `translate(0, ${height})`)
+        .call(axisBottom(x));
+
+      // Add Y axis
+      const y = scaleLinear()
+        .domain([
+          0,
+          max(country.GDPHist, function(d) {
+            return d.value / 1000000000;
+          })
+        ])
+        .range([height, 0]);
+      svg.append("g").call(axisLeft(y));
+
+      // Add the line
+      svg
+        .append("path")
+        .datum(country.GDPHist)
+        .attr("fill", "none")
+        .attr("stroke", "steelblue")
+        .attr("stroke-width", 1.5)
+        .attr(
+          "d",
+          line()
+            .x(function(d) {
+              return x(new Date().setFullYear(d.year));
+            })
+            .y(function(d) {
+              return y(d.value / 1000000000);
+            })
+        );
+
       const bounds = L.latLngBounds(
         L.latLng(country.bounds[1], country.bounds[0]),
         L.latLng(country.bounds[3], country.bounds[2])
@@ -291,6 +350,7 @@ function App() {
             <span>Population: </span>
             {format(country.population)}
           </div>
+          <div className="gdp-graph" ref={graphRef}></div>
         </div>
       ) : null}
       <div
